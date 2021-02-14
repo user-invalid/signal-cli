@@ -1,12 +1,11 @@
 package org.asamk.signal.commands;
 
-import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import net.sourceforge.argparse4j.impl.Arguments;
 import net.sourceforge.argparse4j.inf.Namespace;
 import net.sourceforge.argparse4j.inf.Subparser;
 
+import org.asamk.signal.JsonWriter;
+import org.asamk.signal.OutputType;
 import org.asamk.signal.manager.Manager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,11 +14,11 @@ import java.io.IOException;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 public class GetUserStatusCommand implements LocalCommand {
 
-    // TODO delete later when "json" variable is removed
     private final static Logger logger = LoggerFactory.getLogger(GetUserStatusCommand.class);
 
     @Override
@@ -32,12 +31,14 @@ public class GetUserStatusCommand implements LocalCommand {
     }
 
     @Override
+    public Set<OutputType> getSupportedOutputTypes() {
+        return Set.of(OutputType.PLAIN_TEXT, OutputType.JSON);
+    }
+
+    @Override
     public int handleCommand(final Namespace ns, final Manager m) {
         // Setup the json object mapper
-        ObjectMapper jsonProcessor = new ObjectMapper();
-        jsonProcessor.disable(JsonGenerator.Feature.AUTO_CLOSE_TARGET);
-
-        boolean inJson = ns.getString("output").equals("json") || ns.getBoolean("json");
+        boolean inJson = ns.get("output") == OutputType.JSON || ns.getBoolean("json");
 
         // TODO delete later when "json" variable is removed
         if (ns.getBoolean("json")) {
@@ -50,21 +51,23 @@ public class GetUserStatusCommand implements LocalCommand {
             registered = m.areUsersRegistered(new HashSet<>(ns.getList("number")));
         } catch (IOException e) {
             System.err.println("Unable to check if users are registered");
-            return 1;
+            return 3;
         }
 
         // Output
         if (inJson) {
-            List<JsonIsRegistered> objects = registered.entrySet()
+            final JsonWriter jsonWriter = new JsonWriter(System.out);
+
+            List<JsonUserStatus> jsonUserStatuses = registered.entrySet()
                     .stream()
-                    .map(entry -> new JsonIsRegistered(entry.getKey(), entry.getValue()))
+                    .map(entry -> new JsonUserStatus(entry.getKey(), entry.getValue()))
                     .collect(Collectors.toList());
 
             try {
-                jsonProcessor.writeValue(System.out, objects);
-                System.out.println();
+                jsonWriter.write(jsonUserStatuses);
             } catch (IOException e) {
-                System.err.println(e.getMessage());
+                logger.error("Failed to write json object: {}", e.getMessage());
+                return 3;
             }
         } else {
             for (Map.Entry<String, Boolean> entry : registered.entrySet()) {
@@ -75,13 +78,13 @@ public class GetUserStatusCommand implements LocalCommand {
         return 0;
     }
 
-    private static final class JsonIsRegistered {
+    private static final class JsonUserStatus {
 
         public String name;
 
         public boolean isRegistered;
 
-        public JsonIsRegistered(String name, boolean isRegistered) {
+        public JsonUserStatus(String name, boolean isRegistered) {
             this.name = name;
             this.isRegistered = isRegistered;
         }

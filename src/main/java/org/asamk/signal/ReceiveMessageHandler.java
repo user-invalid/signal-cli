@@ -3,7 +3,6 @@ package org.asamk.signal;
 import org.asamk.signal.manager.Manager;
 import org.asamk.signal.manager.groups.GroupId;
 import org.asamk.signal.manager.groups.GroupUtils;
-import org.asamk.signal.manager.storage.contacts.ContactInfo;
 import org.asamk.signal.manager.storage.groups.GroupInfo;
 import org.asamk.signal.util.DateUtils;
 import org.asamk.signal.util.Util;
@@ -22,6 +21,7 @@ import org.whispersystems.signalservice.api.messages.calls.BusyMessage;
 import org.whispersystems.signalservice.api.messages.calls.HangupMessage;
 import org.whispersystems.signalservice.api.messages.calls.IceUpdateMessage;
 import org.whispersystems.signalservice.api.messages.calls.OfferMessage;
+import org.whispersystems.signalservice.api.messages.calls.OpaqueMessage;
 import org.whispersystems.signalservice.api.messages.calls.SignalServiceCallMessage;
 import org.whispersystems.signalservice.api.messages.multidevice.BlockedListMessage;
 import org.whispersystems.signalservice.api.messages.multidevice.ConfigurationMessage;
@@ -36,9 +36,9 @@ import org.whispersystems.signalservice.api.messages.multidevice.VerifiedMessage
 import org.whispersystems.signalservice.api.messages.multidevice.ViewOnceOpenMessage;
 import org.whispersystems.signalservice.api.messages.shared.SharedContact;
 import org.whispersystems.signalservice.api.push.SignalServiceAddress;
-import org.whispersystems.util.Base64;
 
 import java.io.File;
+import java.util.Base64;
 import java.util.List;
 
 public class ReceiveMessageHandler implements Manager.ReceiveMessageHandler {
@@ -53,9 +53,9 @@ public class ReceiveMessageHandler implements Manager.ReceiveMessageHandler {
     public void handleMessage(SignalServiceEnvelope envelope, SignalServiceContent content, Throwable exception) {
         if (!envelope.isUnidentifiedSender() && envelope.hasSource()) {
             SignalServiceAddress source = envelope.getSourceAddress();
-            ContactInfo sourceContact = m.getContact(source.getLegacyIdentifier());
+            String name = m.getContactOrProfileName(source.getLegacyIdentifier());
             System.out.println(String.format("Envelope from: %s (device: %d)",
-                    (sourceContact == null ? "" : "“" + sourceContact.name + "” ") + source.getLegacyIdentifier(),
+                    (name == null ? "" : "“" + name + "” ") + source.getLegacyIdentifier(),
                     envelope.getSourceDevice()));
             if (source.getRelay().isPresent()) {
                 System.out.println("Relayed by: " + source.getRelay().get());
@@ -98,10 +98,9 @@ public class ReceiveMessageHandler implements Manager.ReceiveMessageHandler {
             if (content == null) {
                 System.out.println("Failed to decrypt message.");
             } else {
-                ContactInfo sourceContact = m.getContact(content.getSender().getLegacyIdentifier());
+                String senderName = m.getContactOrProfileName(content.getSender().getLegacyIdentifier());
                 System.out.println(String.format("Sender: %s (device: %d)",
-                        (sourceContact == null ? "" : "“" + sourceContact.name + "” ") + content.getSender()
-                                .getLegacyIdentifier(),
+                        (senderName == null ? "" : "“" + senderName + "” ") + content.getSender().getLegacyIdentifier(),
                         content.getSenderDevice()));
                 if (content.getDataMessage().isPresent()) {
                     SignalServiceDataMessage message = content.getDataMessage().get();
@@ -127,10 +126,11 @@ public class ReceiveMessageHandler implements Manager.ReceiveMessageHandler {
                     if (syncMessage.getRead().isPresent()) {
                         System.out.println("Received sync read messages list");
                         for (ReadMessage rm : syncMessage.getRead().get()) {
-                            ContactInfo fromContact = m.getContact(rm.getSender().getLegacyIdentifier());
+                            String name = m.getContactOrProfileName(rm.getSender().getLegacyIdentifier());
                             System.out.println("From: "
-                                    + (fromContact == null ? "" : "“" + fromContact.name + "” ")
-                                    + rm.getSender().getLegacyIdentifier()
+                                    + (name == null ? "" : "“" + name + "” ")
+                                    + rm.getSender()
+                                    .getLegacyIdentifier()
                                     + " Message timestamp: "
                                     + DateUtils.formatTimestamp(rm.getTimestamp()));
                         }
@@ -159,13 +159,13 @@ public class ReceiveMessageHandler implements Manager.ReceiveMessageHandler {
                         String to;
                         if (sentTranscriptMessage.getDestination().isPresent()) {
                             String dest = sentTranscriptMessage.getDestination().get().getLegacyIdentifier();
-                            ContactInfo destContact = m.getContact(dest);
-                            to = (destContact == null ? "" : "“" + destContact.name + "” ") + dest;
+                            String name = m.getContactOrProfileName(dest);
+                            to = (name == null ? "" : "“" + name + "” ") + dest;
                         } else if (sentTranscriptMessage.getRecipients().size() > 0) {
                             StringBuilder toBuilder = new StringBuilder();
                             for (SignalServiceAddress dest : sentTranscriptMessage.getRecipients()) {
-                                ContactInfo destContact = m.getContact(dest.getLegacyIdentifier());
-                                toBuilder.append(destContact == null ? "" : "“" + destContact.name + "” ")
+                                String name = m.getContactOrProfileName(dest.getLegacyIdentifier());
+                                toBuilder.append(name == null ? "" : "“" + name + "” ")
                                         .append(dest.getLegacyIdentifier())
                                         .append(" ");
                             }
@@ -244,10 +244,12 @@ public class ReceiveMessageHandler implements Manager.ReceiveMessageHandler {
                         for (StickerPackOperationMessage m : stickerPackOperationMessages) {
                             System.out.println(" - " + m.getType().toString());
                             if (m.getPackId().isPresent()) {
-                                System.out.println("   packId: " + Base64.encodeBytes(m.getPackId().get()));
+                                System.out.println("   packId: " + Base64.getEncoder()
+                                        .encodeToString(m.getPackId().get()));
                             }
                             if (m.getPackKey().isPresent()) {
-                                System.out.println("   packKey: " + Base64.encodeBytes(m.getPackKey().get()));
+                                System.out.println("   packKey: " + Base64.getEncoder()
+                                        .encodeToString(m.getPackKey().get()));
                             }
                         }
                     }
@@ -257,8 +259,8 @@ public class ReceiveMessageHandler implements Manager.ReceiveMessageHandler {
                         System.out.println("Received message request response:");
                         System.out.println("  Type: " + requestResponseMessage.getType());
                         if (requestResponseMessage.getGroupId().isPresent()) {
-                            System.out.println("  Group id: " + Base64.encodeBytes(requestResponseMessage.getGroupId()
-                                    .get()));
+                            System.out.println("  Group id: " + Base64.getEncoder()
+                                    .encodeToString(requestResponseMessage.getGroupId().get()));
                         }
                         if (requestResponseMessage.getPerson().isPresent()) {
                             System.out.println("  Person: " + requestResponseMessage.getPerson()
@@ -281,6 +283,10 @@ public class ReceiveMessageHandler implements Manager.ReceiveMessageHandler {
                 if (content.getCallMessage().isPresent()) {
                     System.out.println("Received a call message");
                     SignalServiceCallMessage callMessage = content.getCallMessage().get();
+                    if (callMessage.getDestinationDeviceId().isPresent()) {
+                        final Integer deviceId = callMessage.getDestinationDeviceId().get();
+                        System.out.println("Destination device id: " + deviceId);
+                    }
                     if (callMessage.getAnswerMessage().isPresent()) {
                         AnswerMessage answerMessage = callMessage.getAnswerMessage().get();
                         System.out.println("Answer message: " + answerMessage.getId() + ": " + answerMessage.getSdp());
@@ -306,6 +312,10 @@ public class ReceiveMessageHandler implements Manager.ReceiveMessageHandler {
                         OfferMessage offerMessage = callMessage.getOfferMessage().get();
                         System.out.println("Offer message: " + offerMessage.getId() + ": " + offerMessage.getSdp());
                     }
+                    if (callMessage.getOpaqueMessage().isPresent()) {
+                        final OpaqueMessage opaqueMessage = callMessage.getOpaqueMessage().get();
+                        System.out.println("Opaque message: size " + opaqueMessage.getOpaque().length);
+                    }
                 }
                 if (content.getReceiptMessage().isPresent()) {
                     System.out.println("Received a receipt message");
@@ -316,6 +326,9 @@ public class ReceiveMessageHandler implements Manager.ReceiveMessageHandler {
                     }
                     if (receiptMessage.isReadReceipt()) {
                         System.out.println(" - Is read receipt");
+                    }
+                    if (receiptMessage.isViewedReceipt()) {
+                        System.out.println(" - Is viewed receipt");
                     }
                     System.out.println(" - Timestamps:");
                     for (long timestamp : receiptMessage.getTimestamps()) {
@@ -396,6 +409,11 @@ public class ReceiveMessageHandler implements Manager.ReceiveMessageHandler {
                 System.out.println("  Has signed group change: " + groupInfo.hasSignedGroupChange());
             }
         }
+        if (message.getGroupCallUpdate().isPresent()) {
+            final SignalServiceDataMessage.GroupCallUpdate groupCallUpdate = message.getGroupCallUpdate().get();
+            System.out.println("Group call update:");
+            System.out.println(" - Era id: " + groupCallUpdate.getEraId());
+        }
         if (message.getPreviews().isPresent()) {
             final List<SignalServiceDataMessage.Preview> previews = message.getPreviews().get();
             System.out.println("Previews:");
@@ -418,8 +436,8 @@ public class ReceiveMessageHandler implements Manager.ReceiveMessageHandler {
         if (message.getSticker().isPresent()) {
             final SignalServiceDataMessage.Sticker sticker = message.getSticker().get();
             System.out.println("Sticker:");
-            System.out.println(" - Pack id: " + Base64.encodeBytes(sticker.getPackId()));
-            System.out.println(" - Pack key: " + Base64.encodeBytes(sticker.getPackKey()));
+            System.out.println(" - Pack id: " + Base64.getEncoder().encodeToString(sticker.getPackId()));
+            System.out.println(" - Pack key: " + Base64.getEncoder().encodeToString(sticker.getPackKey()));
             System.out.println(" - Sticker id: " + sticker.getStickerId());
             // TODO also download sticker image ??
         }
