@@ -10,6 +10,7 @@ import org.asamk.signal.manager.storage.groups.GroupInfo;
 import org.asamk.signal.util.ErrorUtils;
 import org.freedesktop.dbus.exceptions.DBusExecutionException;
 import org.whispersystems.libsignal.util.Pair;
+import org.whispersystems.libsignal.util.guava.Optional;
 import org.whispersystems.signalservice.api.messages.SendMessageResult;
 import org.whispersystems.signalservice.api.push.SignalServiceAddress;
 import org.whispersystems.signalservice.api.util.InvalidNumberException;
@@ -248,4 +249,26 @@ public class DbusSignalImpl implements Signal {
     public boolean isRegistered() {
         return true;
     }
+
+    @Override
+    public void updateProfile(
+            final String name,
+            final String about,
+            final String aboutEmoji,
+            String avatarPath,
+            final boolean removeAvatar
+    ) {
+        try {
+            if (avatarPath.isEmpty()) {
+                avatarPath = null;
+            }
+            Optional<File> avatarFile = removeAvatar
+                    ? Optional.absent()
+                    : avatarPath == null ? null : Optional.of(new File(avatarPath));
+            m.setProfile(name, about, aboutEmoji, avatarFile);
+        } catch (IOException e) {
+            throw new Error.Failure(e.getMessage());
+        }
+    }
+
 }
