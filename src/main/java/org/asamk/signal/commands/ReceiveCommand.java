@@ -8,6 +8,7 @@ import org.asamk.Signal;
 import org.asamk.signal.JsonReceiveMessageHandler;
 import org.asamk.signal.JsonWriter;
 import org.asamk.signal.OutputType;
+import org.asamk.signal.PlainTextWriterImpl;
 import org.asamk.signal.ReceiveMessageHandler;
 import org.asamk.signal.json.JsonMessageEnvelope;
 import org.asamk.signal.manager.Manager;
@@ -48,87 +49,105 @@ public class ReceiveCommand implements ExtendedDbusCommand, LocalCommand {
     }
 
     public int handleCommand(final Namespace ns, final Signal signal, DBusConnection dbusconnection) {
-        boolean inJson = ns.get("output") == OutputType.JSON || ns.getBoolean("json");
+        var inJson = ns.get("output") == OutputType.JSON || ns.getBoolean("json");
 
         // TODO delete later when "json" variable is removed
         if (ns.getBoolean("json")) {
             logger.warn("\"--json\" option has been deprecated, please use the global \"--output=json\" instead.");
         }
 
-        final JsonWriter jsonWriter = inJson ? new JsonWriter(System.out) : null;
         try {
-            dbusconnection.addSigHandler(Signal.MessageReceived.class, messageReceived -> {
-                if (jsonWriter != null) {
-                    JsonMessageEnvelope envelope = new JsonMessageEnvelope(messageReceived);
-                    final Map<String, JsonMessageEnvelope> object = Map.of("envelope", envelope);
-                    try {
-                        jsonWriter.write(object);
-                    } catch (IOException e) {
-                        logger.error("Failed to write json object: {}", e.getMessage());
-                    }
-                } else {
-                    System.out.print(String.format("Envelope from: %s\nTimestamp: %s\nBody: %s\n",
-                            messageReceived.getSender(),
-                            DateUtils.formatTimestamp(messageReceived.getTimestamp()),
-                            messageReceived.getMessage()));
-                    if (messageReceived.getGroupId().length > 0) {
-                        System.out.println("Group info:");
-                        System.out.println("  Id: " + Base64.getEncoder().encodeToString(messageReceived.getGroupId()));
-                    }
-                    if (messageReceived.getAttachments().size() > 0) {
-                        System.out.println("Attachments: ");
-                        for (String attachment : messageReceived.getAttachments()) {
-                            System.out.println("-  Stored plaintext in: " + attachment);
-                        }
-                    }
-                    System.out.println();
-                }
-            });
+            if (inJson) {
+                final var jsonWriter = new JsonWriter(System.out);
 
-            dbusconnection.addSigHandler(Signal.ReceiptReceived.class, receiptReceived -> {
-                if (jsonWriter != null) {
-                    JsonMessageEnvelope envelope = new JsonMessageEnvelope(receiptReceived);
-                    final Map<String, JsonMessageEnvelope> object = Map.of("envelope", envelope);
+                dbusconnection.addSigHandler(Signal.MessageReceived.class, messageReceived -> {
+                    var envelope = new JsonMessageEnvelope(messageReceived);
+                    final var object = Map.of("envelope", envelope);
                     try {
                         jsonWriter.write(object);
                     } catch (IOException e) {
                         logger.error("Failed to write json object: {}", e.getMessage());
                     }
-                } else {
-                    System.out.print(String.format("Receipt from: %s\nTimestamp: %s\n",
-                            receiptReceived.getSender(),
-                            DateUtils.formatTimestamp(receiptReceived.getTimestamp())));
-                }
-            });
+                });
 
-            dbusconnection.addSigHandler(Signal.SyncMessageReceived.class, syncReceived -> {
-                if (jsonWriter != null) {
-                    JsonMessageEnvelope envelope = new JsonMessageEnvelope(syncReceived);
-                    final Map<String, JsonMessageEnvelope> object = Map.of("envelope", envelope);
+                dbusconnection.addSigHandler(Signal.ReceiptReceived.class, receiptReceived -> {
+                    var envelope = new JsonMessageEnvelope(receiptReceived);
+                    final var object = Map.of("envelope", envelope);
                     try {
                         jsonWriter.write(object);
                     } catch (IOException e) {
                         logger.error("Failed to write json object: {}", e.getMessage());
                     }
-                } else {
-                    System.out.print(String.format("Sync Envelope from: %s to: %s\nTimestamp: %s\nBody: %s\n",
-                            syncReceived.getSource(),
-                            syncReceived.getDestination(),
-                            DateUtils.formatTimestamp(syncReceived.getTimestamp()),
-                            syncReceived.getMessage()));
-                    if (syncReceived.getGroupId().length > 0) {
-                        System.out.println("Group info:");
-                        System.out.println("  Id: " + Base64.getEncoder().encodeToString(syncReceived.getGroupId()));
+                });
+
+                dbusconnection.addSigHandler(Signal.SyncMessageReceived.class, syncReceived -> {
+                    var envelope = new JsonMessageEnvelope(syncReceived);
+                    final var object = Map.of("envelope", envelope);
+                    try {
+                        jsonWriter.write(object);
+                    } catch (IOException e) {
+                        logger.error("Failed to write json object: {}", e.getMessage());
                     }
-                    if (syncReceived.getAttachments().size() > 0) {
-                        System.out.println("Attachments: ");
-                        for (String attachment : syncReceived.getAttachments()) {
-                            System.out.println("-  Stored plaintext in: " + attachment);
+                });
+            } else {
+                final var writer = new PlainTextWriterImpl(System.out);
+
+                dbusconnection.addSigHandler(Signal.MessageReceived.class, messageReceived -> {
+                    try {
+                        writer.println("Envelope from: {}", messageReceived.getSender());
+                        writer.println("Timestamp: {}", DateUtils.formatTimestamp(messageReceived.getTimestamp()));
+                        writer.println("Body: {}", messageReceived.getMessage());
+                        if (messageReceived.getGroupId().length > 0) {
+                            writer.println("Group info:");
+                            writer.indentedWriter()
+                                    .println("Id: {}",
+                                            Base64.getEncoder().encodeToString(messageReceived.getGroupId()));
                         }
+                        if (messageReceived.getAttachments().size() > 0) {
+                            writer.println("Attachments:");
+                            for (var attachment : messageReceived.getAttachments()) {
+                                writer.println("- Stored plaintext in: {}", attachment);
+                            }
+                        }
+                        writer.println();
+                    } catch (IOException e) {
+                        e.printStackTrace();
                     }
-                    System.out.println();
-                }
-            });
+                });
+
+                dbusconnection.addSigHandler(Signal.ReceiptReceived.class, receiptReceived -> {
+                    try {
+                        writer.println("Receipt from: {}", receiptReceived.getSender());
+                        writer.println("Timestamp: {}", DateUtils.formatTimestamp(receiptReceived.getTimestamp()));
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                });
+
+                dbusconnection.addSigHandler(Signal.SyncMessageReceived.class, syncReceived -> {
+                    try {
+                        writer.println("Sync Envelope from: {} to: {}",
+                                syncReceived.getSource(),
+                                syncReceived.getDestination());
+                        writer.println("Timestamp: {}", DateUtils.formatTimestamp(syncReceived.getTimestamp()));
+                        writer.println("Body: {}", syncReceived.getMessage());
+                        if (syncReceived.getGroupId().length > 0) {
+                            writer.println("Group info:");
+                            writer.indentedWriter()
+                                    .println("Id: {}", Base64.getEncoder().encodeToString(syncReceived.getGroupId()));
+                        }
+                        if (syncReceived.getAttachments().size() > 0) {
+                            writer.println("Attachments:");
+                            for (var attachment : syncReceived.getAttachments()) {
+                                writer.println("- Stored plaintext in: {}", attachment);
+                            }
+                        }
+                        writer.println();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                });
+            }
         } catch (DBusException e) {
             e.printStackTrace();
             return 2;
@@ -144,7 +163,7 @@ public class ReceiveCommand implements ExtendedDbusCommand, LocalCommand {
 
     @Override
     public int handleCommand(final Namespace ns, final Manager m) {
-        boolean inJson = ns.get("output") == OutputType.JSON || ns.getBoolean("json");
+        var inJson = ns.get("output") == OutputType.JSON || ns.getBoolean("json");
 
         // TODO delete later when "json" variable is removed
         if (ns.getBoolean("json")) {
@@ -155,16 +174,14 @@ public class ReceiveCommand implements ExtendedDbusCommand, LocalCommand {
         if (ns.getDouble("timeout") != null) {
             timeout = ns.getDouble("timeout");
         }
-        boolean returnOnTimeout = true;
+        var returnOnTimeout = true;
         if (timeout < 0) {
             returnOnTimeout = false;
             timeout = 3600;
         }
         boolean ignoreAttachments = ns.getBoolean("ignore_attachments");
         try {
-            final Manager.ReceiveMessageHandler handler = inJson
-                    ? new JsonReceiveMessageHandler(m)
-                    : new ReceiveMessageHandler(m);
+            final var handler = inJson ? new JsonReceiveMessageHandler(m) : new ReceiveMessageHandler(m);
             m.receiveMessages((long) (timeout * 1000),
                     TimeUnit.MILLISECONDS,
                     returnOnTimeout,

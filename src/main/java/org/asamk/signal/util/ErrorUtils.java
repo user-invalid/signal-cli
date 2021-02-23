@@ -1,5 +1,6 @@
 package org.asamk.signal.util;
 
+import org.asamk.signal.PlainTextWriter;
 import org.asamk.signal.manager.groups.GroupIdFormatException;
 import org.asamk.signal.manager.groups.GroupNotFoundException;
 import org.asamk.signal.manager.groups.NotAGroupMemberException;
@@ -22,18 +23,22 @@ public class ErrorUtils {
                 "If you use an Oracle JRE please check if you have unlimited strength crypto enabled, see README");
     }
 
-    public static int handleTimestampAndSendMessageResults(long timestamp, List<SendMessageResult> results) {
+    public static int handleTimestampAndSendMessageResults(
+            PlainTextWriter writer,
+            long timestamp,
+            List<SendMessageResult> results
+    ) throws IOException {
         if (timestamp != 0) {
-            System.out.println(timestamp);
+            writer.println("{}", timestamp);
         }
-        List<String> errors = getErrorMessagesFromSendMessageResults(results);
+        var errors = getErrorMessagesFromSendMessageResults(results);
         return handleSendMessageResultErrors(errors);
     }
 
     public static List<String> getErrorMessagesFromSendMessageResults(List<SendMessageResult> results) {
-        List<String> errors = new ArrayList<>();
-        for (SendMessageResult result : results) {
-            String error = getErrorMessageFromSendMessageResult(result);
+        var errors = new ArrayList<String>();
+        for (var result : results) {
+            var error = getErrorMessageFromSendMessageResult(result);
             if (error != null) {
                 errors.add(error);
             }
@@ -58,7 +63,7 @@ public class ErrorUtils {
             return 0;
         }
         System.err.println("Failed to send (some) messages:");
-        for (String error : errors) {
+        for (var error : errors) {
             System.err.println(error);
         }
         return 3;

@@ -3,17 +3,14 @@ package org.asamk.signal.commands;
 import net.sourceforge.argparse4j.inf.Namespace;
 import net.sourceforge.argparse4j.inf.Subparser;
 
+import org.asamk.signal.PlainTextWriterImpl;
 import org.asamk.signal.manager.Manager;
-import org.asamk.signal.manager.groups.GroupId;
 import org.asamk.signal.manager.groups.GroupIdFormatException;
 import org.asamk.signal.manager.groups.GroupNotFoundException;
 import org.asamk.signal.manager.groups.NotAGroupMemberException;
 import org.asamk.signal.util.Util;
-import org.whispersystems.libsignal.util.Pair;
-import org.whispersystems.signalservice.api.messages.SendMessageResult;
 
 import java.io.IOException;
-import java.util.List;
 
 import static org.asamk.signal.util.ErrorUtils.handleAssertionError;
 import static org.asamk.signal.util.ErrorUtils.handleGroupIdFormatException;
@@ -32,9 +29,11 @@ public class QuitGroupCommand implements LocalCommand {
     @Override
     public int handleCommand(final Namespace ns, final Manager m) {
         try {
-            final GroupId groupId = Util.decodeGroupId(ns.getString("group"));
-            final Pair<Long, List<SendMessageResult>> results = m.sendQuitGroupMessage(groupId);
-            return handleTimestampAndSendMessageResults(results.first(), results.second());
+            final var writer = new PlainTextWriterImpl(System.out);
+
+            final var groupId = Util.decodeGroupId(ns.getString("group"));
+            final var results = m.sendQuitGroupMessage(groupId);
+            return handleTimestampAndSendMessageResults(writer, results.first(), results.second());
         } catch (IOException e) {
             handleIOException(e);
             return 3;

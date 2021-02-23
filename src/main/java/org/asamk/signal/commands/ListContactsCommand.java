@@ -3,10 +3,10 @@ package org.asamk.signal.commands;
 import net.sourceforge.argparse4j.inf.Namespace;
 import net.sourceforge.argparse4j.inf.Subparser;
 
+import org.asamk.signal.PlainTextWriterImpl;
 import org.asamk.signal.manager.Manager;
-import org.asamk.signal.manager.storage.contacts.ContactInfo;
 
-import java.util.List;
+import java.io.IOException;
 
 public class ListContactsCommand implements LocalCommand {
 
@@ -16,9 +16,16 @@ public class ListContactsCommand implements LocalCommand {
 
     @Override
     public int handleCommand(final Namespace ns, final Manager m) {
-        List<ContactInfo> contacts = m.getContacts();
-        for (ContactInfo c : contacts) {
-            System.out.println(String.format("Number: %s Name: %s  Blocked: %b", c.number, c.name, c.blocked));
+        final var writer = new PlainTextWriterImpl(System.out);
+
+        var contacts = m.getContacts();
+        try {
+            for (var c : contacts) {
+                writer.println("Number: {} Name: {} Blocked: {}", c.number, c.name, c.blocked);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+            return 3;
         }
         return 0;
     }

@@ -6,8 +6,9 @@ import net.sourceforge.argparse4j.inf.Subparser;
 
 import org.asamk.signal.JsonWriter;
 import org.asamk.signal.OutputType;
+import org.asamk.signal.PlainTextWriter;
+import org.asamk.signal.PlainTextWriterImpl;
 import org.asamk.signal.manager.Manager;
-import org.asamk.signal.manager.groups.GroupInviteLinkUrl;
 import org.asamk.signal.manager.storage.groups.GroupInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,7 +16,6 @@ import org.whispersystems.signalservice.api.push.SignalServiceAddress;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -30,12 +30,14 @@ public class ListGroupsCommand implements LocalCommand {
                 .collect(Collectors.toSet());
     }
 
-    private static void printGroupPlainText(Manager m, GroupInfo group, boolean detailed) {
+    private static void printGroupPlainText(
+            PlainTextWriter writer, Manager m, GroupInfo group, boolean detailed
+    ) throws IOException {
         if (detailed) {
-            final GroupInviteLinkUrl groupInviteLink = group.getGroupInviteLink();
+            final var groupInviteLink = group.getGroupInviteLink();
 
-            System.out.println(String.format(
-                    "Id: %s Name: %s  Active: %s Blocked: %b Members: %s Pending members: %s Requesting members: %s Link: %s",
+            writer.println(
+                    "Id: {} Name: {}  Active: {} Blocked: {} Members: {} Pending members: {} Requesting members: {} Link: {}",
                     group.getGroupId().toBase64(),
                     group.getTitle(),
                     group.isMember(m.getSelfAddress()),
@@ -43,13 +45,13 @@ public class ListGroupsCommand implements LocalCommand {
                     resolveMembers(m, group.getMembers()),
                     resolveMembers(m, group.getPendingMembers()),
                     resolveMembers(m, group.getRequestingMembers()),
-                    groupInviteLink == null ? '-' : groupInviteLink.getUrl()));
+                    groupInviteLink == null ? '-' : groupInviteLink.getUrl());
         } else {
-            System.out.println(String.format("Id: %s Name: %s  Active: %s Blocked: %b",
+            writer.println("Id: {} Name: {}  Active: {} Blocked: {}",
                     group.getGroupId().toBase64(),
                     group.getTitle(),
                     group.isMember(m.getSelfAddress()),
-                    group.isBlocked()));
+                    group.isBlocked());
         }
     }
 
@@ -70,11 +72,11 @@ public class ListGroupsCommand implements LocalCommand {
     @Override
     public int handleCommand(final Namespace ns, final Manager m) {
         if (ns.get("output") == OutputType.JSON) {
-            final JsonWriter jsonWriter = new JsonWriter(System.out);
+            final var jsonWriter = new JsonWriter(System.out);
 
-            List<JsonGroup> jsonGroups = new ArrayList<>();
-            for (GroupInfo group : m.getGroups()) {
-                final GroupInviteLinkUrl groupInviteLink = group.getGroupInviteLink();
+            var jsonGroups = new ArrayList<JsonGroup>();
+            for (var group : m.getGroups()) {
+                final var groupInviteLink = group.getGroupInviteLink();
 
                 jsonGroups.add(new JsonGroup(group.getGroupId().toBase64(),
                         group.getTitle(),
@@ -95,9 +97,15 @@ public class ListGroupsCommand implements LocalCommand {
 
             return 0;
         } else {
+            final var writer = new PlainTextWriterImpl(System.out);
             boolean detailed = ns.getBoolean("detailed");
-            for (GroupInfo group : m.getGroups()) {
-                printGroupPlainText(m, group, detailed);
+            try {
+                for (var group : m.getGroups()) {
+                    printGroupPlainText(writer, m, group, detailed);
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+                return 3;
             }
         }
 
